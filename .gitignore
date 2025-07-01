@@ -1,0 +1,9 @@
+# .gitignore活力
+data/*
+models/*
+outputs/*
+__pycache__/
+*.pyc
+*.pt
+*.mp4
+.venv/
