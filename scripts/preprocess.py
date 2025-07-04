@@ -1,6 +1,6 @@
 # Purpose of the file - extract video metadata( fps, resolution)
 # and optionally preprocess frames(resize, convert formats)
-# use opencv to read mp4 video, extract FPS, w, h for speed estimation adn video processing
+# use opencv to read mp4 video, extract FPS, w, h for speed estimation and video processing
 
 import cv2
 import os
@@ -30,7 +30,6 @@ def extract_clip(video_path, output_path, start_sec=0, duration_sec=10):
     # Create output directory if it doesn't exist
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     
-    # Fixed typo: VideoWriter_fourcc (not VideoWrtiter_fourcc)
     out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'),
                           fps, (width, height))
     
