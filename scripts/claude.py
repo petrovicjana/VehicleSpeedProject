@@ -30,7 +30,7 @@ def test_detector_tracker(detector, tracker, detector_name, tracker_name, video_
     out = None
     if output_path:
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        fourcc = cv2.VideoWriter_fourcc(*'avc1')
         out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
         print(f"Saving output to: {os.path.abspath(output_path)}")
     

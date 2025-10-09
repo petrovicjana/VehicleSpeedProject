@@ -6,7 +6,7 @@ import cjm_byte_track
 
 class SORTTracker:
     """Simple SORT Tracker"""
-    def __init__(self, max_age=30, min_hits=3, iou_threshold=0.25):
+    def __init__(self, max_age=30, min_hits=1, iou_threshold=0.25):
         self.max_age = max_age
         self.min_hits = min_hits
         self.iou_threshold = iou_threshold
