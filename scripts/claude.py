@@ -98,7 +98,7 @@ def test_detector_tracker(detector, tracker, detector_name, tracker_name, video_
         print(f"  Output saved to: {output_path}")
 
 def main():
-    VIDEO_PATH = "videos/test_clip.mp4"  # Update with your video path
+    VIDEO_PATH = "test_clip.mp4"  # Update with your video path
     MAX_FRAMES = 100
     
     print("Starting YOLOv8 + SORT test...")
