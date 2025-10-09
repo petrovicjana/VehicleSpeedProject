@@ -80,7 +80,7 @@ def test_detector(detector, detector_name, video_path, output_path=None, max_fra
         print(f"  Output saved to: {output_path}")
 
 def main():
-    VIDEO_PATH = "test_clip.mp4"  # Update with your video path
+    VIDEO_PATH = "data/test_clip.mp4"  
     MAX_FRAMES = 100
     
     print("Starting detector tests...")
