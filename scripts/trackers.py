@@ -108,7 +108,7 @@ class DeepSortTracker:
         return [(trk.tlbr.tolist(), 1.0, trk.track_id) for trk in tracks if trk.is_confirmed()]
 
 """ class ByteTrackTracker:
-    """ByteTrack Tracker"""
+    ByteTrack Tracker
     def __init__(self, track_thresh=0.3, match_thresh=0.7):
         from cjm_byte_track.core import BaseTrack
         BaseTrack._count = 0  # Reset if needed
