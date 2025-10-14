@@ -1,7 +1,7 @@
-
 import cv2
 import time
 import os
+import numpy as np
 from detectors import YOLODetector, FasterRCNNDetector, SSDDetector
 from trackers import SORTTracker, DeepSortTracker, ByteTrackTracker
 
@@ -23,9 +23,12 @@ def test_pipeline(detector, tracker, detector_name, tracker_name, video_path, ou
     print(f"Video: {width}x{height} @ {fps} FPS, {total_frames} frames")
     
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Try 'XVID' if mp4v fails
     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-    print(f"Saving output to: {os.path.abspath(output_path)}")
+    if not out.isOpened():
+        print(f"Error: Could not open video writer for {output_path}")
+        cap.release()
+        return
     
     frame_count = 0
     track_count = 0
@@ -38,10 +41,14 @@ def test_pipeline(detector, tracker, detector_name, tracker_name, video_path, ou
             print(f"Failed to read frame {frame_count+1}")
             break
         
+        # Skip every other frame to reduce motion blur
+        if frame_count % 2 != 0:
+            frame_count += 1
+            continue
+        
         start_time = time.time()
         detections = detector.detect(frame)
-        # For DeepSort, pass frame; others don't need it
-        if isinstance(tracker, DeepSortTracker):
+        if isinstance(tracker, (DeepSortTracker, ByteTrackTracker)):
             tracks = tracker.update(detections, frame)
         else:
             tracks = tracker.update(detections)
@@ -51,13 +58,14 @@ def test_pipeline(detector, tracker, detector_name, tracker_name, video_path, ou
         track_count += len(tracks)
         
         for bbox, score, track_id in tracks:
-            x1, y1, x2, y2 = map(int, bbox)
+            x1, y1, x2, y2 = map(int, np.array(bbox).flatten())
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
             label = f"ID {track_id}: {score:.2f}"
             cv2.putText(frame, label, (x1, y1 - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
         
-        info_text = f"{detector_name}+{tracker_name} | Frame: {frame_count+1} | Tracks: {len(tracks)} | FPS: {1/elapsed_time:.1f if elapsed_time > 0 else 0}"
+        fps_display = f"{1/elapsed_time:.1f}" if elapsed_time > 0 else "0.0"
+        info_text = f"{detector_name}+{tracker_name} | Frame: {frame_count+1} | Tracks: {len(tracks)} | FPS: {fps_display}"
         cv2.putText(frame, info_text, (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
         
@@ -66,10 +74,15 @@ def test_pipeline(detector, tracker, detector_name, tracker_name, video_path, ou
         frame_count += 1
         
         if frame_count % 10 == 0:
-            print(f"Processed {frame_count}/{max_frames} frames | Avg FPS: {frame_count/total_time:.1f} | Tracks: {track_count}")
+            print(f"Processed {frame_count}/{max_frames} frames | Avg FPS: {frame_count/total_time:.1f if total_time > 0 else 0} | Tracks: {track_count}")
     
     cap.release()
     out.release()
+    
+    if os.path.exists(output_path):
+        print(f"Output file exists at: {os.path.abspath(output_path)}")
+    else:
+        print(f"Warning: Output file not created: {output_path}")
     
     avg_fps = frame_count / total_time if total_time > 0 else 0
     avg_tracks = track_count / frame_count if frame_count > 0 else 0
@@ -83,7 +96,7 @@ def test_pipeline(detector, tracker, detector_name, tracker_name, video_path, ou
     print(f"  Output saved to: {output_path}")
 
 def main():
-    VIDEO_PATH = "test_clip.mp4"  # Update with your video path
+    VIDEO_PATH = "test_clip.mp4"
     MAX_FRAMES = 100  # Set to None for full video
     
     print("Starting all pipeline tests...")
@@ -98,12 +111,12 @@ def main():
     trackers = {
         "SORT": SORTTracker(max_age=50, min_hits=2, iou_threshold=0.15),
         "DeepSort": DeepSortTracker(max_age=50, nn_budget=200),
-        "ByteTrack": ByteTrackTracker(track_thresh=0.3, match_thresh=0.7)
+        "ByteTrack": ByteTrackTracker(track_thresh=0.3, match_thresh=0.7, frame_rate=30)
     }
     
     for det_name, detector in detectors.items():
         for trk_name, tracker in trackers.items():
-            output_path = f"outputs/output_{det_name.lower()}_{trk_name.lower()}.mp4"
+            output_path = f"/content/drive/MyDrive/Colab Projects/VehicleSpeedProject/scripts/outputs/output_{det_name.lower()}_{trk_name.lower()}.mp4"
             try:
                 test_pipeline(detector, tracker, det_name, trk_name, VIDEO_PATH, output_path, max_frames=MAX_FRAMES)
             except Exception as e:
