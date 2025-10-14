@@ -6,7 +6,7 @@ import cjm_byte_track
 
 class SORTTracker:
     """Simple SORT Tracker"""
-    def __init__(self, max_age=30, min_hits=1, iou_threshold=0.25):
+    def __init__(self, max_age=50, min_hits=2, iou_threshold=0.15):
         self.max_age = max_age
         self.min_hits = min_hits
         self.iou_threshold = iou_threshold
@@ -98,7 +98,7 @@ class SORTTracker:
 
 class DeepSortTracker:
     """DeepSort Tracker"""
-    def __init__(self, max_age=30, nn_budget=100):
+    def __init__(self, max_age=50, nn_budget=200):
         self.tracker = DeepSort(max_age=max_age, nn_budget=nn_budget)
 
     def update(self, detections, frame):
@@ -109,7 +109,7 @@ class DeepSortTracker:
 
 class ByteTrackTracker:
     """ByteTrack Tracker"""
-    def __init__(self, track_thresh=0.5, match_thresh=0.8):
+    def __init__(self, track_thresh=0.3, match_thresh=0.7):
         from cjm_byte_track.basetrack import BaseTrack
         BaseTrack._count = 0  # Reset if needed
         self.tracker = cjm_byte_track.BYTETracker(track_thresh=track_thresh, match_thresh=match_thresh)

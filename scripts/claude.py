@@ -1,6 +1,123 @@
-# test.py
 
-# test.py
+import cv2
+import time
+import os
+from detectors import YOLODetector, FasterRCNNDetector, SSDDetector
+from trackers import SORTTracker, DeepSortTracker, ByteTrackTracker
+
+def test_pipeline(detector, tracker, detector_name, tracker_name, video_path, output_path, max_frames=None):
+    print(f"\n{'='*60}")
+    print(f"Testing {detector_name} + {tracker_name}")
+    print(f"{'='*60}")
+    
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        print(f"Error: Could not open video {video_path}")
+        return
+    
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    
+    print(f"Video: {width}x{height} @ {fps} FPS, {total_frames} frames")
+    
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    print(f"Saving output to: {os.path.abspath(output_path)}")
+    
+    frame_count = 0
+    track_count = 0
+    total_time = 0
+    max_frames = total_frames if max_frames is None else min(max_frames, total_frames)
+    
+    while frame_count < max_frames:
+        ret, frame = cap.read()
+        if not ret:
+            print(f"Failed to read frame {frame_count+1}")
+            break
+        
+        start_time = time.time()
+        detections = detector.detect(frame)
+        # For DeepSort, pass frame; others don't need it
+        if isinstance(tracker, DeepSortTracker):
+            tracks = tracker.update(detections, frame)
+        else:
+            tracks = tracker.update(detections)
+        elapsed_time = time.time() - start_time
+        
+        total_time += elapsed_time
+        track_count += len(tracks)
+        
+        for bbox, score, track_id in tracks:
+            x1, y1, x2, y2 = map(int, bbox)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            label = f"ID {track_id}: {score:.2f}"
+            cv2.putText(frame, label, (x1, y1 - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+        
+        info_text = f"{detector_name}+{tracker_name} | Frame: {frame_count+1} | Tracks: {len(tracks)} | FPS: {1/elapsed_time:.1f if elapsed_time > 0 else 0}"
+        cv2.putText(frame, info_text, (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+        
+        out.write(frame)
+        
+        frame_count += 1
+        
+        if frame_count % 10 == 0:
+            print(f"Processed {frame_count}/{max_frames} frames | Avg FPS: {frame_count/total_time:.1f} | Tracks: {track_count}")
+    
+    cap.release()
+    out.release()
+    
+    avg_fps = frame_count / total_time if total_time > 0 else 0
+    avg_tracks = track_count / frame_count if frame_count > 0 else 0
+    
+    print(f"\nResults:")
+    print(f"  Frames processed: {frame_count}")
+    print(f"  Total tracks: {track_count}")
+    print(f"  Avg tracks/frame: {avg_tracks:.2f}")
+    print(f"  Avg FPS: {avg_fps:.2f}")
+    print(f"  Total time: {total_time:.2f}s")
+    print(f"  Output saved to: {output_path}")
+
+def main():
+    VIDEO_PATH = "test_clip.mp4"  # Update with your video path
+    MAX_FRAMES = 100  # Set to None for full video
+    
+    print("Starting all pipeline tests...")
+    print(f"Input video: {VIDEO_PATH}")
+    
+    detectors = {
+        "YOLOv8": YOLODetector(),
+        "FasterRCNN": FasterRCNNDetector(),
+        "SSD": SSDDetector()
+    }
+    
+    trackers = {
+        "SORT": SORTTracker(max_age=50, min_hits=2, iou_threshold=0.15),
+        "DeepSort": DeepSortTracker(max_age=50, nn_budget=200),
+        "ByteTrack": ByteTrackTracker(track_thresh=0.3, match_thresh=0.7)
+    }
+    
+    for det_name, detector in detectors.items():
+        for trk_name, tracker in trackers.items():
+            output_path = f"outputs/output_{det_name.lower()}_{trk_name.lower()}.mp4"
+            try:
+                test_pipeline(detector, tracker, det_name, trk_name, VIDEO_PATH, output_path, max_frames=MAX_FRAMES)
+            except Exception as e:
+                print(f"{det_name} + {trk_name} test failed: {e}")
+
+if __name__ == "__main__":
+    main()
+
+
+
+
+
+
+""" 
 import cv2
 import time
 import os
@@ -115,8 +232,7 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
+ """
 
 """ import cv2
 import time
