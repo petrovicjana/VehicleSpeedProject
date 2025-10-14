@@ -107,10 +107,10 @@ class DeepSortTracker:
         tracks = self.tracker.update_tracks(dets, frame=frame)
         return [(trk.tlbr.tolist(), 1.0, trk.track_id) for trk in tracks if trk.is_confirmed()]
 
-class ByteTrackTracker:
+""" class ByteTrackTracker:
     """ByteTrack Tracker"""
     def __init__(self, track_thresh=0.3, match_thresh=0.7):
-        from cjm_byte_track.basetrack import BaseTrack
+        from cjm_byte_track.core import BaseTrack
         BaseTrack._count = 0  # Reset if needed
         self.tracker = cjm_byte_track.BYTETracker(track_thresh=track_thresh, match_thresh=match_thresh)
 
@@ -118,4 +118,32 @@ class ByteTrackTracker:
         # Format: detections as numpy array [x1,y1,x2,y2,conf]
         dets = np.array([det[0] + [det[1]] for det in detections]) if detections else np.empty((0,5))
         tracks = self.tracker.update(dets)
-        return [(trk.tlbr.tolist(), trk.score, trk.track_id) for trk in tracks]
+        return [(trk.tlbr.tolist(), trk.score, trk.track_id) for trk in tracks] """
+    
+
+
+class ByteTrackTracker:
+    """ByteTrack Tracker - Using cjm_byte_track"""
+    def __init__(self, track_thresh=0.3, match_thresh=0.7, frame_rate=30):
+        from cjm_byte_track.core import BYTETracker
+        self.tracker = BYTETracker(
+            track_thresh=track_thresh,
+            match_thresh=match_thresh,
+            track_buffer=int(frame_rate / 30.0 * 30),
+            frame_rate=frame_rate
+        )
+
+    def update(self, detections):
+        # Format: detections as numpy array [x1,y1,x2,y2,conf]
+        if len(detections) == 0:
+            return []
+        
+        dets = np.array([[*det[0], det[1]] for det in detections])
+        tracks = self.tracker.update(dets)
+        
+        result = []
+        for trk in tracks:
+            bbox = [int(trk.tlbr[0]), int(trk.tlbr[1]), 
+                   int(trk.tlbr[2]), int(trk.tlbr[3])]
+            result.append((bbox, trk.score, trk.track_id))
+        return result
