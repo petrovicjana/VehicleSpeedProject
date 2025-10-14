@@ -109,7 +109,7 @@ class DeepSortTracker:
 class ByteTrackTracker:
     """ByteTrack Tracker"""
     def __init__(self, track_thresh=0.3, match_thresh=0.7, frame_rate=30):
-        from cjm_byte_track import BYTETracker
+        from cjm_byte_track.core import BYTETracker
         self.tracker = BYTETracker(
             track_thresh=track_thresh,
             match_thresh=match_thresh,
