@@ -5,6 +5,238 @@ import numpy as np
 from detectors import YOLODetector, FasterRCNNDetector, SSDDetector
 from trackers import SORTTracker, DeepSortTracker, ByteTrackTracker
 
+
+# --- Added slowdown preprocessing function ---
+def slow_down_video(input_path, output_path, slow_factor=2.0):
+    """
+    Creates a slowed-down copy of the video.
+    Keeps all frames but reduces FPS so playback is slower.
+    """
+    cap = cv2.VideoCapture(input_path)
+    if not cap.isOpened():
+        print(f"Error: Could not open input video: {input_path}")
+        return None
+
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    # Create output writer with reduced fps
+    out = cv2.VideoWriter(output_path,
+                          cv2.VideoWriter_fourcc(*'mp4v'),
+                          fps / slow_factor,
+                          (width, height))
+
+    print(f"⏳ Creating slowed video ({slow_factor}x slower)...")
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        out.write(frame)
+
+    cap.release()
+    out.release()
+    print(f"✅ Slowed video saved to: {output_path}")
+    return output_path
+# --- End slowdown preprocessing function ---
+
+
+def test_pipeline(detector, tracker, detector_name, tracker_name, video_path, output_path, max_frames=None):
+    print(f"\n{'='*60}")
+    print(f"Testing {detector_name} + {tracker_name}")
+    print(f"{'='*60}")
+
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        print(f"Error: Could not open video {video_path}")
+        return
+
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    print(f"Video: {width}x{height} @ {fps} FPS, {total_frames} frames")
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    if not out.isOpened():
+        print(f"Error: Could not open video writer for {output_path}")
+        cap.release()
+        return
+
+    frame_count = 0
+    track_count = 0
+    total_time = 0
+    max_frames = total_frames if max_frames is None else min(max_frames, total_frames)
+
+    while frame_count < max_frames:
+        ret, frame = cap.read()
+        if not ret:
+            print(f"Failed to read frame {frame_count+1}")
+            break
+
+        # Skip every other frame to reduce motion blur
+        if frame_count % 2 != 0:
+            frame_count += 1
+            continue
+
+        start_time = time.time()
+        detections = detector.detect(frame)
+        if isinstance(tracker, (DeepSortTracker, ByteTrackTracker)):
+            tracks = tracker.update(detections, frame)
+        else:
+            tracks = tracker.update(detections)
+        elapsed_time = time.time() - start_time
+
+        total_time += elapsed_time
+        track_count += len(tracks)
+
+        for bbox, score, track_id in tracks:
+            x1, y1, x2, y2 = map(int, np.array(bbox).flatten())
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            label = f"ID {track_id}: {score:.2f}"
+            cv2.putText(frame, label, (x1, y1 - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+        fps_display = f"{1/elapsed_time:.1f}" if elapsed_time > 0 else "0.0"
+        info_text = f"{detector_name}+{tracker_name} | Frame: {frame_count+1} | Tracks: {len(tracks)} | FPS: {fps_display}"
+        cv2.putText(frame, info_text, (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+
+        out.write(frame)
+        frame_count += 1
+
+        if frame_count % 10 == 0:
+            avg_fps = frame_count / total_time if total_time > 0 else 0
+            print(f"Processed {frame_count}/{max_frames} frames | Avg FPS: {avg_fps:.1f} | Tracks: {track_count}")
+
+    cap.release()
+    out.release()
+
+    if os.path.exists(output_path):
+        print(f"Output file exists at: {os.path.abspath(output_path)}")
+    else:
+        print(f"Warning: Output file not created: {output_path}")
+
+    avg_fps = frame_count / total_time if total_time > 0 else 0
+    avg_tracks = track_count / frame_count if frame_count > 0 else 0
+
+    print(f"\nResults:")
+    print(f"  Frames processed: {frame_count}")
+    print(f"  Total tracks: {track_count}")
+    print(f"  Avg tracks/frame: {avg_tracks:.2f}")
+    print(f"  Avg FPS: {avg_fps:.2f}")
+    print(f"  Total time: {total_time:.2f}s")
+    print(f"  Output saved to: {output_path}")
+
+
+def main():
+    VIDEO_PATH = "test_clip.mp4"
+    SLOWED_VIDEO_PATH = "test_clip_slow.mp4"  # --- Added path for slowed video ---
+    MAX_FRAMES = 200  # Set to None for full video
+    SLOW_FACTOR = 2.0  # --- Adjust slowdown here (2x, 3x, etc.) ---
+
+    print("Starting all pipeline tests...")
+    print(f"Input video: {VIDEO_PATH}")
+
+    # --- Added slowdown preprocessing call ---
+    if not os.path.exists(SLOWED_VIDEO_PATH):
+        slow_down_video(VIDEO_PATH, SLOWED_VIDEO_PATH, slow_factor=SLOW_FACTOR)
+    else:
+        print(f"✅ Slowed video already exists: {SLOWED_VIDEO_PATH}")
+
+    # Use slowed video for testing
+    VIDEO_PATH = SLOWED_VIDEO_PATH
+    # --- End slowdown preprocessing ---
+
+    detectors = {
+        "YOLOv8": YOLODetector(),
+        "FasterRCNN": FasterRCNNDetector(),
+        "SSD": SSDDetector()
+    }
+
+    trackers = {
+        "SORT": SORTTracker(max_age=50, min_hits=2, iou_threshold=0.15),
+        "DeepSort": DeepSortTracker(max_age=50, nn_budget=200),
+        "ByteTrack": ByteTrackTracker(track_thresh=0.3, match_thresh=0.7, frame_rate=30)
+    }
+
+    for det_name, detector in detectors.items():
+        for trk_name, tracker in trackers.items():
+            output_path = f"/content/drive/MyDrive/Colab Projects/VehicleSpeedProject/scripts/outputs/output_{det_name.lower()}_{trk_name.lower()}.mp4"
+            try:
+                test_pipeline(detector, tracker, det_name, trk_name, VIDEO_PATH, output_path, max_frames=MAX_FRAMES)
+            except Exception as e:
+                print(f"{det_name} + {trk_name} test failed: {e}")
+
+
+if __name__ == "__main__":
+    main()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+""" import cv2
+import time
+import os
+import numpy as np
+from detectors import YOLODetector, FasterRCNNDetector, SSDDetector
+from trackers import SORTTracker, DeepSortTracker, ByteTrackTracker
+
 def test_pipeline(detector, tracker, detector_name, tracker_name, video_path, output_path, max_frames=None):
     print(f"\n{'='*60}")
     print(f"Testing {detector_name} + {tracker_name}")
@@ -123,244 +355,9 @@ def main():
                 print(f"{det_name} + {trk_name} test failed: {e}")
 
 if __name__ == "__main__":
-    main()
-
-
-
-
-
-
-""" 
-import cv2
-import time
-import os
-from detectors import YOLODetector
-from trackers import SORTTracker
-
-def test_detector_tracker(detector, tracker, detector_name, tracker_name, video_path, output_path=None, max_frames=100):
-    print(f"\n{'='*60}")
-    print(f"Testing {detector_name} + {tracker_name}")
-    print(f"{'='*60}")
-    
-    # Open video
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        print(f"Error: Could not open video {video_path}")
-        return
-    
-    # Video properties
-    fps = int(cap.get(cv2.CAP_PROP_FPS))
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    
-    print(f"Video: {width}x{height} @ {fps} FPS, {total_frames} frames")
-    
-    # Initialize video writer
-    out = None
-    if output_path:
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        fourcc = cv2.VideoWriter_fourcc(*'avc1')
-        out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-        print(f"Saving output to: {os.path.abspath(output_path)}")
-    
-    frame_count = 0
-    detection_count = 0
-    total_time = 0
-    
-    while frame_count < max_frames:
-        ret, frame = cap.read()
-        if not ret:
-            print(f"Failed to read frame {frame_count+1}")
-            break
-        
-        # Detect objects
-        start_time = time.time()
-        detections = detector.detect(frame)
-        # Track objects
-        tracks = tracker.update(detections)
-        elapsed_time = time.time() - start_time
-        
-        total_time += elapsed_time
-        detection_count += len(detections)
-        
-        # Draw tracks
-        for bbox, score, track_id in tracks:
-            x1, y1, x2, y2 = map(int, bbox)
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            label = f"ID {track_id}: {score:.2f}"
-            cv2.putText(frame, label, (x1, y1 - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-        
-        # Add info text
-        info_text = f"{detector_name}+{tracker_name} | Frame: {frame_count+1} | Tracks: {len(tracks)} | FPS: {1/elapsed_time:.1f}"
-        cv2.putText(frame, info_text, (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-        
-        if out:
-            out.write(frame)
-        
-        frame_count += 1
-        
-        if frame_count % 10 == 0:
-            print(f"Processed {frame_count}/{min(max_frames, total_frames)} frames | "
-                  f"Avg FPS: {frame_count/total_time:.1f} | "
-                  f"Tracks: {detection_count}")
-    
-    # Cleanup
-    cap.release()
-    if out:
-        out.release()
-        if os.path.exists(output_path):
-            print(f"Output file exists at: {os.path.abspath(output_path)}")
-    
-    # Summary
-    avg_fps = frame_count / total_time if total_time > 0 else 0
-    avg_tracks = detection_count / frame_count if frame_count > 0 else 0
-    
-    print(f"\nResults:")
-    print(f"  Frames processed: {frame_count}")
-    print(f"  Total tracks: {detection_count}")
-    print(f"  Avg tracks/frame: {avg_tracks:.2f}")
-    print(f"  Avg FPS: {avg_fps:.2f}")
-    print(f"  Total time: {total_time:.2f}s")
-    if output_path:
-        print(f"  Output saved to: {output_path}")
-
-def main():
-    VIDEO_PATH = "speed_estimation.mp4"  # Update with your video path
-    MAX_FRAMES = 100
-    
-    print("Starting YOLOv8 + SORT test...")
-    print(f"Input video: {VIDEO_PATH}")
-    
-    try:
-        print("\nTesting YOLOv8 + SORT...")
-        yolo_detector = YOLODetector()
-        sort_tracker = SORTTracker(max_age=1, min_hits=3, iou_threshold=0.3)
-        test_detector_tracker(yolo_detector, sort_tracker, "YOLOv8", "SORT", VIDEO_PATH, 
-                             output_path="outputs/output_yolo_sort.mp4", max_frames=MAX_FRAMES)
-    except Exception as e:
-        print(f"YOLOv8 + SORT test failed: {e}")
-
-if __name__ == "__main__":
-    main()
- """
-
-""" import cv2
-import time
-from detectors import YOLODetector, FasterRCNNDetector, SSDDetector
-
-def test_detector(detector, detector_name, video_path, output_path=None, max_frames=100):
-    print(f"\n{'='*60}")
-    print(f"Testing {detector_name}")
-    print(f"{'='*60}")
-    
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        print(f"Error: Could not open video {video_path}")
-        return
-    
-    fps = int(cap.get(cv2.CAP_PROP_FPS))
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    
-    print(f"Video: {width}x{height} @ {fps} FPS, {total_frames} frames")
-    
-    out = None
-    if output_path:
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-    
-    frame_count = 0
-    detection_count = 0
-    total_time = 0
-    
-    while frame_count < max_frames:
-        ret, frame = cap.read()
-        if not ret:
-            break
-        
-        start_time = time.time()
-        detections = detector.detect(frame)
-        elapsed_time = time.time() - start_time
-        
-        total_time += elapsed_time
-        detection_count += len(detections)
-        
-        # Draw detections
-        for bbox, score in detections:
-            x1, y1, x2, y2 = bbox
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            label = f"Car: {score:.2f}"
-            cv2.putText(frame, label, (x1, y1 - 10),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-        
-        info_text = f"{detector_name} | Frame: {frame_count+1} | Cars: {len(detections)} | FPS: {1/elapsed_time:.1f}"
-        cv2.putText(frame, info_text, (10, 30),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-        
-        if out:
-            out.write(frame)
-        
-        frame_count += 1
-        
-        if frame_count % 10 == 0:
-            print(f"Processed {frame_count}/{min(max_frames, total_frames)} frames | "
-                  f"Avg FPS: {frame_count/total_time:.1f} | "
-                  f"Detections: {detection_count}")
-    
-    cap.release()
-    if out:
-        out.release()
-    
-    avg_fps = frame_count / total_time if total_time > 0 else 0
-    avg_detections = detection_count / frame_count if frame_count > 0 else 0
-    
-    print(f"\nResults:")
-    print(f"  Frames processed: {frame_count}")
-    print(f"  Total detections: {detection_count}")
-    print(f"  Avg detections/frame: {avg_detections:.2f}")
-    print(f"  Avg FPS: {avg_fps:.2f}")
-    print(f"  Total time: {total_time:.2f}s")
-    if output_path:
-        print(f"  Output saved to: {output_path}")
-
-def main():
-    VIDEO_PATH = "data/test_clip.mp4"  
-    MAX_FRAMES = 100
-    
-    print("Starting detector tests...")
-    print(f"Input video: {VIDEO_PATH}")
-    
-    try:
-        print("\n[1/3] Testing YOLOv8...")
-        yolo_detector = YOLODetector()
-        test_detector(yolo_detector, "YOLOv8", VIDEO_PATH, 
-                     output_path="output_yolo.mp4", max_frames=MAX_FRAMES)
-    except Exception as e:
-        print(f"YOLOv8 test failed: {e}")
-    
-    try:
-        print("\n[2/3] Testing Faster R-CNN...")
-        frcnn_detector = FasterRCNNDetector()
-        test_detector(frcnn_detector, "Faster R-CNN", VIDEO_PATH,
-                     output_path="output_frcnn.mp4", max_frames=MAX_FRAMES)
-    except Exception as e:
-        print(f"Faster R-CNN test failed: {e}")
-    
-    try:
-        print("\n[3/3] Testing SSD...")
-        ssd_detector = SSDDetector()
-        test_detector(ssd_detector, "SSD", VIDEO_PATH,
-                     output_path="output_ssd.mp4", max_frames=MAX_FRAMES)
-    except Exception as e:
-        print(f"SSD test failed: {e}")
-    
-    print("\n" + "="*60)
-    print("All tests completed!")
-    print("="*60)
-
-if __name__ == "__main__":
     main() """
+
+
+
+
+
