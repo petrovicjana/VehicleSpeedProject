@@ -96,7 +96,7 @@ def test_pipeline(detector, tracker, detector_name, tracker_name, video_path, ou
     print(f"  Output saved to: {output_path}")
 
 def main():
-    VIDEO_PATH = "test_clip.mp4"
+    VIDEO_PATH = "test_clip_30s.mp4"
     MAX_FRAMES = 200  # Set to None for full video
     
     print("Starting all pipeline tests...")
