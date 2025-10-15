@@ -25,11 +25,29 @@ def test_pipeline(detector, tracker, video_path, output_path, max_frames=None):
     # Create output directory
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     
-    # Use better codec - avc1 or H264
-    fourcc = cv2.VideoWriter_fourcc(*'avc1')  # Better compatibility than mp4v
-    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-    if not out.isOpened():
-        print(f"Error: Could not open video writer for {output_path}")
+    # Try multiple codecs until one works
+    codecs = [
+        ('mp4v', 'MP4V'),
+        ('X264', 'X264'),
+        ('XVID', 'XVID'),
+        ('MJPG', 'MJPG')
+    ]
+    
+    out = None
+    for codec_str, codec_name in codecs:
+        try:
+            fourcc = cv2.VideoWriter_fourcc(*codec_str)
+            out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+            if out.isOpened():
+                print(f"Using codec: {codec_name}")
+                break
+            else:
+                out.release()
+        except:
+            pass
+    
+    if out is None or not out.isOpened():
+        print(f"Error: Could not open video writer with any codec")
         cap.release()
         return
     
@@ -116,13 +134,33 @@ def test_pipeline(detector, tracker, video_path, output_path, max_frames=None):
     # Release resources
     cap.release()
     out.release()
+    cv2.destroyAllWindows()  # Clean up any OpenCV windows
     
-    # Verify output file
+    # CRITICAL: Re-encode the video with ffmpeg for proper playback
     if os.path.exists(output_path):
         file_size = os.path.getsize(output_path) / (1024 * 1024)  # MB
-        print(f"\n✅ Output file created successfully!")
-        print(f"   Location: {os.path.abspath(output_path)}")
+        print(f"\n✅ Raw output file created!")
         print(f"   Size: {file_size:.2f} MB")
+        
+        # Re-encode with ffmpeg for compatibility
+        print("\n🔄 Re-encoding video with ffmpeg for better compatibility...")
+        temp_path = output_path.replace('.mp4', '_temp.mp4')
+        os.rename(output_path, temp_path)
+        
+        ffmpeg_cmd = f'ffmpeg -i "{temp_path}" -c:v libx264 -preset fast -crf 23 -pix_fmt yuv420p "{output_path}" -y'
+        result = os.system(ffmpeg_cmd)
+        
+        if result == 0 and os.path.exists(output_path):
+            os.remove(temp_path)
+            final_size = os.path.getsize(output_path) / (1024 * 1024)
+            print(f"✅ Video re-encoded successfully!")
+            print(f"   Location: {os.path.abspath(output_path)}")
+            print(f"   Final size: {final_size:.2f} MB")
+        else:
+            # If ffmpeg fails, keep the original
+            os.rename(temp_path, output_path)
+            print(f"⚠️ ffmpeg re-encoding failed, keeping original file")
+            print(f"   Location: {os.path.abspath(output_path)}")
     else:
         print(f"\n❌ Warning: Output file not created: {output_path}")
     
