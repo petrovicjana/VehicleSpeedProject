@@ -118,12 +118,22 @@ class ByteTrackTracker:
         )
 
     def update(self, detections, frame):
+        # Convert detections to numpy array
         dets = np.array([det[0] + [det[1]] for det in detections]) if detections else np.empty((0, 5))
-        img_info = {'height': frame.shape[0], 'width': frame.shape[1]}
-        img_size = (frame.shape[0], frame.shape[1])
+        
+        # CRITICAL FIX: Convert numpy int64 to native Python int
+        height = int(frame.shape[0])
+        width = int(frame.shape[1])
+        
+        # Create img_info and img_size with native Python types
+        img_info = {'height': height, 'width': width}
+        img_size = (height, width)
+        
+        # Update tracker
         tracks = self.tracker.update(dets, img_info, img_size)
+        
+        # Return tracks in the expected format
         return [(trk.tlbr.tolist(), trk.score, trk.track_id) for trk in tracks]
-
 
 
 

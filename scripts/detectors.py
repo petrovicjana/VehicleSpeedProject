@@ -1,12 +1,12 @@
 import cv2
 import torch
-from ultralytics import YOLO
 from torchvision.models.detection import fasterrcnn_resnet50_fpn, ssd300_vgg16
 
 class YOLODetector:
-    """YOLOv8 - Fastest detector"""
+    """YOLOv8 Detector"""
     def __init__(self):
-        self.model = YOLO('yolov8m.pt')  # Medium model for better accuracy
+        from ultralytics import YOLO
+        self.model = YOLO('yolov8m.pt')
     
     def detect(self, frame):
         # YOLO classes: 2=car, 3=motorcycle, 5=bus, 7=truck
